@@ -1,5 +1,7 @@
 package main
 
-func main() {
+import "../URLshortener/server"
 
+func main() {
+	server.HandleRequests()
 }
