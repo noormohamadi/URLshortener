@@ -1,17 +1,17 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 )
 
-func HandleRequests() {
-	server := http.Server{
-		Addr: "urlshortner:8090",
-	}
-	http.HandleFunc("/", homePage)
-	server.ListenAndServe()
+func Redirect(w http.ResponseWriter, r *http.Request) {
+	u := strings.Split(r.URL.String(), "/")
+	fmt.Print(u[2])
 }
 
-func homePage(w http.ResponseWriter, r *http.Request) {
-
+func GetURL(w http.ResponseWriter, r *http.Request) {
+	u := strings.Split(r.URL.String(), "/")
+	fmt.Print(u[2])
 }
