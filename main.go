@@ -107,7 +107,6 @@ func home(w http.ResponseWriter, r *http.Request) {
 		url := r.FormValue("url")
 		short := "re" + r.FormValue("short")
 		ex := r.FormValue("ex")
-		fmt.Println(short + strconv.Itoa(len(short)))
 		if short == "re" {
 			massage += "we generate a random shorten url for you !"
 			short = ""

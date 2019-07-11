@@ -3,6 +3,7 @@ package DB
 import (
 	"database/sql"
 	"log"
+	"strconv"
 )
 
 func createUrlsTable(db *sql.DB) {
@@ -71,4 +72,11 @@ func Used(shorten string, db *sql.DB) {
 		panic(err.Error())
 	}
 	insForm.Exec(value, shorten)
+	var t string
+	if value > 1 {
+		t = " times"
+	} else {
+		t = " time"
+	}
+	log.Println(shorten + " used " + strconv.Itoa(value) + t)
 }
