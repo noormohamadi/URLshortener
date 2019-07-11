@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 	"html/template"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -21,7 +22,7 @@ var db sql.DB
 
 const expire = 20
 
-type mass struct {
+type htmlvalues struct {
 	Massage string
 	Shorten string
 	URL     string
@@ -31,34 +32,23 @@ type mass struct {
 func Redirect(w http.ResponseWriter, r *http.Request) {
 	//getting shorten url from url
 	params := mux.Vars(r)
-	shortLink := params["url"]
-	var link string
-	err := db.QueryRow("SELECT url FROM urls WHERE shorten ='" + shortLink + "'").Scan(&link)
-	// Check for errors or invalid short urls
-	if err != nil && err != sql.ErrNoRows {
-		log.Fatal(err)
-	} else if err != nil && err == sql.ErrNoRows {
-		log.Println(shortLink + " not found.")
+	shorten := params["url"]
+	if !DB.Exist(shorten, &db) {
+		log.Println(shorten + " not found.")
 		w.Write([]byte("404 Not found."))
 	} else {
 		// Valid short url
-		var date string
-		er := db.QueryRow("SELECT expire FROM urls WHERE shorten = '" + shortLink + "'").Scan(&date)
-		if er != nil && err != sql.ErrNoRows {
-			log.Fatal(err)
-		}
+		link := DB.Select("url", shorten, &db)
+		date := DB.Select("expire", shorten, &db)
 		if date < strings.Split(time.Now().String(), " ")[0] {
 			w.Write([]byte("your link is expired."))
 			log.Println(date)
 		} else {
-			//er := db.QueryRow("UPDATE urls SET cntr = cntr + 1 WHERE shorten = '" + shortLink +"'")
-			//if er != nil && err != sql.ErrNoRows {
-			//	log.Fatal(err)
-			//}
-			log.Println("request: " + shortLink + " => " + link)
+			log.Println("request: " + shorten + " => " + link)
 			if link[0:1] != "//" && link[0:6] == "https:" && link[0:5] == "http:" {
 				link = "//" + link
 			}
+			DB.Used(shorten, &db)
 			// do redirection
 			http.Redirect(w, r, link, http.StatusTemporaryRedirect)
 		}
@@ -73,15 +63,21 @@ func GetURL(url string, short string, date string) (string, string) {
 		for i := 0; i < len(url); i++ {
 			sh += int(url[i])
 		}
+		size := 0
+		for i := sh; i > 0; i /= 10 {
+			size++
+		}
 		ran := rand.New(rand.NewSource(time.Now().UnixNano()))
-		sh -= rand.Intn(sh) % 100
-		short = "re" + strconv.Itoa(sh) + strconv.Itoa(ran.Intn(1000))
-		var s string
-		er := db.QueryRow("SELECT shorten FROM urls WHERE shorten = '" + short + "'").Scan(&s)
-		for !(er != nil && er == sql.ErrNoRows) {
+		sh -= rand.Intn(sh)
+		size = len(url)/3 - size
+		if size <= 0 {
+			sh /= int(math.Pow(10, math.Abs(float64(size))+1))
+			size = 1
+		}
+		short = "re" + strconv.Itoa(sh) + strconv.Itoa(ran.Intn(int(math.Pow(10, float64(size)))))
+		for DB.Exist(short, &db) {
 			fmt.Println("hi")
-			short = "re" + strconv.Itoa(sh) + strconv.Itoa(ran.Intn(1000))
-			er = db.QueryRow("SELECT shorten FROM urls WHERE shorten = '" + short + "'").Scan(&s)
+			short = "re" + strconv.Itoa(sh) + strconv.Itoa(ran.Intn(int(math.Pow(10, float64(size)))))
 		}
 	}
 	//default expire time
@@ -91,32 +87,8 @@ func GetURL(url string, short string, date string) (string, string) {
 	}
 	log.Println("creat : " + url + " ==> " + short + " until : " + date)
 	//save into database
-	add, err := db.Prepare("INSERT INTO urls(shorten, url, expire) VALUES(\"" + short + "\",\"" + url + "\",'" + date + "')")
-	if err != nil {
-		log.Println(err.Error())
-	}
-	defer add.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
-	add.Exec()
+	DB.Add(short, url, date, &db)
 	return short, date
-}
-
-func main() {
-	router := mux.NewRouter()
-	db = *DB.ConnectDB("root", "", "localhost:3306", "urls")
-	//defer db.Close()
-	err := db.Ping()
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(-1)
-	}
-	router.SkipClean(true) // keep double slash for URLs like http://...
-	log.Println("Server available")
-	router.HandleFunc(`/{url:re.*}`, Redirect).Methods("GET")
-	router.HandleFunc(`/`, home)
-	log.Fatal(http.ListenAndServe(":5000", router))
 }
 
 func home(w http.ResponseWriter, r *http.Request) {
@@ -135,28 +107,26 @@ func home(w http.ResponseWriter, r *http.Request) {
 		url := r.FormValue("url")
 		short := "re" + r.FormValue("short")
 		ex := r.FormValue("ex")
-		if short == "" {
-			//fmt.Fprintf(w, "we generate a random shorten url for you\n")
+		fmt.Println(short + strconv.Itoa(len(short)))
+		if short == "re" {
 			massage += "we generate a random shorten url for you !"
+			short = ""
 		} else {
 			if len(short)-2 > len(url)/3 {
-				//fmt.Fprintf(w, "your shorten url was too big so we generate a random one\n")
+				size := len(url) / 3
+				massage += "your shorten url was too big (it must be at last " + strconv.Itoa(size) + " characters) so we generate a random one !"
 				short = ""
-				massage += "your shorten url was too big so we generate a random one !"
 			} else {
-				var id int
-				err := db.QueryRow("SELECT shorten FROM urls WHERE shorten = '" + short + "'").Scan(&id)
-				if !(err != nil && err == sql.ErrNoRows) {
-					//fmt.Fprintf(w, "your shorten url is already in use so we generate a random one\n")
+
+				if DB.Exist(short, &db) {
+					massage += short + " is already in use so we generate a random one !"
 					short = ""
-					massage += "your shorten url is already in use so we generate a random one !"
 				}
 			}
 		}
 		short, ex = GetURL(url, short, ex)
-		//fmt.Fprintf(w, "%s/%s redirects you to %s until %s", r.Host, short, url, ex)
 		short = r.Host + "/" + short
-		m := mass{massage, short, url, ex}
+		value := htmlvalues{massage, short, url, ex}
 		fp := path.Join("server", "shorten.html")
 		tmpl, err := template.ParseFiles(fp)
 		if err != nil {
@@ -164,11 +134,27 @@ func home(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := tmpl.Execute(w, m); err != nil {
+		if err := tmpl.Execute(w, value); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	default:
 		fmt.Fprintf(w, "Sorry, only GET and POST methods are supported.")
 	}
 
+}
+
+func main() {
+	router := mux.NewRouter()
+	db = *DB.ConnectDB("root", "", "localhost:3306", "urls")
+	defer db.Close()
+	err := db.Ping()
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+	router.SkipClean(true) // keep double slash for URLs like http://...
+	log.Println("Server available")
+	router.HandleFunc(`/{url:re.*}`, Redirect).Methods("GET")
+	router.HandleFunc(`/`, home)
+	log.Fatal(http.ListenAndServe(":5000", router))
 }
