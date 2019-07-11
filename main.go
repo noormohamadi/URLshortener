@@ -58,38 +58,21 @@ func Redirect(w http.ResponseWriter, r *http.Request) {
 
 func GetURL(url string, short string, date string) (string, string) {
 	//generate random shorten url
-	if short == "" || len(short)-2 > len(url)/3 {
-		fmt.Println("rand")
-		var s string
+	if short == "" {
+		log.Println("generate random shorten url ...")
 		sh := 0
 		for i := 0; i < len(url); i++ {
 			sh += int(url[i])
 		}
-		fmt.Println(sh)
 		ran := rand.New(rand.NewSource(time.Now().UnixNano()))
+		sh -= rand.Intn(sh) % 100
 		short = "re" + strconv.Itoa(sh) + strconv.Itoa(ran.Intn(1000))
-		e := db.QueryRow("SELECT shorten FROM urls WHERE shorten=" + short).Scan(&s)
-		for !(e != nil && e == sql.ErrNoRows) {
-			short = "re" + strconv.Itoa(sh) + strconv.Itoa(ran.Intn(1000))
-			e = db.QueryRow("SELECT shorten FROM urls WHERE shorten=" + short).Scan(&s)
-		}
-	} else {
 		var s string
-		e := db.QueryRow("SELECT shorten FROM urls WHERE shorten=" + short).Scan(&s)
-		if !(e != nil && e == sql.ErrNoRows) {
-			fmt.Println("used : " + short)
-			sh := 0
-			for i := 0; i < len(url); i++ {
-				sh += int(url[i])
-			}
-			fmt.Println(sh)
-			ran := rand.New(rand.NewSource(time.Now().UnixNano()))
+		er := db.QueryRow("SELECT shorten FROM urls WHERE shorten = '" + short + "'").Scan(&s)
+		for !(er != nil && er == sql.ErrNoRows) {
+			fmt.Println("hi")
 			short = "re" + strconv.Itoa(sh) + strconv.Itoa(ran.Intn(1000))
-			e := db.QueryRow("SELECT shorten FROM urls WHERE shorten=" + short).Scan(&s)
-			for !(e != nil && e == sql.ErrNoRows) {
-				short = "re" + strconv.Itoa(sh) + strconv.Itoa(ran.Intn(1000))
-				e = db.QueryRow("SELECT shorten FROM urls WHERE shorten=" + short).Scan(&s)
-			}
+			er = db.QueryRow("SELECT shorten FROM urls WHERE shorten = '" + short + "'").Scan(&s)
 		}
 	}
 	//default expire time
@@ -114,7 +97,7 @@ func GetURL(url string, short string, date string) (string, string) {
 func main() {
 	router := mux.NewRouter()
 	db = *DB.ConnectDB("root", "", "localhost:3306", "urls")
-	defer db.Close()
+	//defer db.Close()
 	err := db.Ping()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -142,21 +125,22 @@ func home(w http.ResponseWriter, r *http.Request) {
 		url := r.FormValue("url")
 		short := "re" + r.FormValue("short")
 		ex := r.FormValue("ex")
-		var sh string
-		sh, ex = GetURL(url, short, ex)
-		if sh != short {
-			if short == "" {
-				fmt.Fprintf(w, "we generate a random shorten url for you\n")
+		if short == "" {
+			fmt.Fprintf(w, "we generate a random shorten url for you\n")
+		} else {
+			if len(short)-2 > len(url)/3 {
+				fmt.Fprintf(w, "your shorten url was too big so we generate a random one\n")
+				short = ""
 			} else {
-				if len(short)-2 > len(url)/3 {
-					fmt.Fprintf(w, "your shorten url was too big ")
-				} else {
-					fmt.Fprintf(w, "your shorten url is already in use ")
+				var id int
+				err := db.QueryRow("SELECT shorten FROM urls WHERE shorten = '" + short + "'").Scan(&id)
+				if !(err != nil && err == sql.ErrNoRows) {
+					fmt.Fprintf(w, "your shorten url is already in use so we generate a random one\n")
+					short = ""
 				}
-				fmt.Fprintf(w, "so we generate a random one\n")
 			}
-			short = sh
 		}
+		short, ex = GetURL(url, short, ex)
 		fmt.Fprintf(w, "%s/%s redirects you to %s until %s", r.Host, short, url, ex)
 	default:
 		fmt.Fprintf(w, "Sorry, only GET and POST methods are supported.")
