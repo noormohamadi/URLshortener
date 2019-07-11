@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>URL Shortener</title>
+</head>
+<body >
+    <label style="color: red">
+        {{ .Massage}}<br/>
+
+    </label>
+    <label>
+        your shorten url :
+    </label>
+    <input value="{{ .Shorten}}" type="text" readonly/>
+    <label>
+        redirects you to :
+    </label>
+    <input value="{{ .URL}}" type="text" readonly/>
+    <label> until : </label>
+    <input value="{{ .Expire}}" type="date" readonly/>
+
+</body>
+</html>

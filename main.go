@@ -6,10 +6,12 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
+	"html/template"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +20,13 @@ import (
 var db sql.DB
 
 const expire = 20
+
+type mass struct {
+	Massage string
+	Shorten string
+	URL     string
+	Expire  string
+}
 
 func Redirect(w http.ResponseWriter, r *http.Request) {
 	//getting shorten url from url
@@ -118,6 +127,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "server/index.html")
 	case "POST":
 		// Call ParseForm() to parse the raw query and update r.PostForm and r.Form.
+		massage := ""
 		if err := r.ParseForm(); err != nil {
 			fmt.Fprintf(w, "ParseForm() err: %v", err)
 			return
@@ -126,33 +136,39 @@ func home(w http.ResponseWriter, r *http.Request) {
 		short := "re" + r.FormValue("short")
 		ex := r.FormValue("ex")
 		if short == "" {
-			fmt.Fprintf(w, "we generate a random shorten url for you\n")
+			//fmt.Fprintf(w, "we generate a random shorten url for you\n")
+			massage += "we generate a random shorten url for you !"
 		} else {
 			if len(short)-2 > len(url)/3 {
-				fmt.Fprintf(w, "your shorten url was too big so we generate a random one\n")
+				//fmt.Fprintf(w, "your shorten url was too big so we generate a random one\n")
 				short = ""
+				massage += "your shorten url was too big so we generate a random one !"
 			} else {
 				var id int
 				err := db.QueryRow("SELECT shorten FROM urls WHERE shorten = '" + short + "'").Scan(&id)
 				if !(err != nil && err == sql.ErrNoRows) {
-					fmt.Fprintf(w, "your shorten url is already in use so we generate a random one\n")
+					//fmt.Fprintf(w, "your shorten url is already in use so we generate a random one\n")
 					short = ""
+					massage += "your shorten url is already in use so we generate a random one !"
 				}
 			}
 		}
 		short, ex = GetURL(url, short, ex)
-		fmt.Fprintf(w, "%s/%s redirects you to %s until %s", r.Host, short, url, ex)
+		//fmt.Fprintf(w, "%s/%s redirects you to %s until %s", r.Host, short, url, ex)
+		short = r.Host + "/" + short
+		m := mass{massage, short, url, ex}
+		fp := path.Join("server", "shorten.html")
+		tmpl, err := template.ParseFiles(fp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := tmpl.Execute(w, m); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	default:
 		fmt.Fprintf(w, "Sorry, only GET and POST methods are supported.")
 	}
 
-	//http.ServeFile(w, r, fmt.Sprintf("server/index.html"))
-	//var url string
-	//url = r.FormValue("uurl")
-	//if url != "" {
-	//	fmt.Println(url)
-	//	sh := GetURL(w, url)
-	//	r.Form.Set("short", sh)
-	//
-	//}
 }
